@@ -3,7 +3,7 @@ name: Deploy to EC2
 on:
   push:
     branches:
-      - main  # Change to the branch you want to trigger the pipeline
+      - master  # Change to the branch you want to trigger the pipeline
 
 jobs:
   deploy:
