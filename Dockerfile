@@ -1,26 +1,24 @@
-# Use the official Python image as a base
+# Use an official Python runtime as a parent image
 FROM python:3.9-slim
 
-# Set the working directory
+# Set the working directory in the container
 WORKDIR /app
 
-# Copy the requirements.txt file into the container
-COPY requirements.txt /app/
-
-# Install dependencies from the requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
-
-# Install OpenCV dependencies (for OpenGL)
+# Install system dependencies for OpenCV and other requirements
 RUN apt-get update && apt-get install -y \
     libgl1-mesa-glx \
     libglib2.0-0 \
-    && rm -rf /var/lib/apt/lists/*
+    && apt-get clean
 
-# Copy the rest of the application code into the container
-COPY . /app/
+# Copy the current directory contents into the container at /app
+COPY . /app
 
-# Expose the port that the app will run on
-EXPOSE 8080
+# Install Python dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Run the application
+# Expose the port your app runs on
+EXPOSE 5000
+
+# Run app.py when the container launches
 CMD ["python", "app.py"]
+

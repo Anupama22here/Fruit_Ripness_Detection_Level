@@ -7,7 +7,9 @@ import cv2
 app = Flask(__name__)
 
 # Load your vehicle detection model
-model = torch.hub.load('ultralytics/yolov5', 'custom', path='models/best.pt')  # Adjusted path
+model = torch.hub.load('ultralytics/yolov5', 'custom', path='/app/models/best.pt')  # Adjusted path
+
+ # Adjusted path
 UPLOAD_FOLDER = 'static/uploads'
 PROCESSED_FOLDER = 'static/processed'
 
@@ -82,5 +84,5 @@ def process_video(file_path):
     out.release()
     return output_file
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)  # Updated for production
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080,debug=False)  # Updated for production
