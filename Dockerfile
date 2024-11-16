@@ -1,18 +1,26 @@
-# Base image
+# Use the official Python image as a base
 FROM python:3.9-slim
 
-# Set the working directory in the container
+# Set the working directory
 WORKDIR /app
 
-# Copy requirements and install dependencies
-COPY requirements.txt .
+# Copy the requirements.txt file into the container
+COPY requirements.txt /app/
+
+# Install dependencies from the requirements.txt
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy the application code
-COPY . .
+# Install OpenCV dependencies (for OpenGL)
+RUN apt-get update && apt-get install -y \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    && rm -rf /var/lib/apt/lists/*
 
-# Expose the port Flask runs on
-EXPOSE 5000
+# Copy the rest of the application code into the container
+COPY . /app/
 
-# Command to run the Flask app
+# Expose the port that the app will run on
+EXPOSE 8080
+
+# Run the application
 CMD ["python", "app.py"]
