@@ -31,7 +31,7 @@ jobs:
       - name: Deploy to EC2 instance
         run: |
           # Connect to EC2 and perform deployment
-          ssh -o StrictHostKeyChecking=no ec2-user@13.200.207.243 << EOF
+          ssh -o StrictHostKeyChecking=no ubuntu@13.200.207.243 << EOF
             # Login to AWS ECR
             aws ecr get-login-password --region ap-south-1 | docker login --username ubuntu --password-stdin 886436948023.dkr.ecr.ap-south-1.amazonaws.com
             
@@ -45,7 +45,7 @@ jobs:
       # Optional: Check the running container logs (for debugging purposes)
       - name: Check Docker container logs
         run: |
-          ssh -o StrictHostKeyChecking=no ec2-user@13.200.207.243 << EOF
+          ssh -o StrictHostKeyChecking=no ubuntu@13.200.207.243 << EOF
             docker ps
             docker logs $(docker ps -q)
           EOF
