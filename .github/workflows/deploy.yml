@@ -1,4 +1,4 @@
-name: Deploy to EC2
+name: Traffic Detection CI/CD Pipeline
 
 on:
   push:
@@ -6,7 +6,8 @@ on:
       - master  # Change to the branch you want to trigger the pipeline
 
 jobs:
-  deploy:
+  # Section 1: Continuous Integration (CI)
+  ci:
     runs-on: ubuntu-latest
 
     steps:
@@ -14,38 +15,98 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v2
 
-      # Step 2: Set up SSH agent to use the private key for EC2 access
-      - name: Set up SSH
-        uses: webfactory/ssh-agent@v0.5.3
+      # Step 2: Set up Python environment (for tests, linting, etc.)
+      - name: Set up Python
+        uses: actions/setup-python@v2
         with:
-          ssh-private-key: ${{ secrets.EC2_PRIVATE_KEY }}  # Replace with your private key stored in GitHub Secrets
+          python-version: '3.8'  # Specify the Python version for your app
 
-      # Step 3: Configure AWS CLI
+      # Step 3: Install dependencies
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      # Step 4: Run tests (unit tests, linting, etc.)
+      - name: Run tests
+        run: |
+          pytest  # Assuming you have tests set up for your application
+          # Or, you can use any other testing framework as per your project
+
+      # Step 5: Build Docker image
+      - name: Build Docker image
+        run: |
+          docker build -t traffic-detection .
+
+      # Step 6: Push Docker image to ECR (AWS Elastic Container Registry)
+      - name: Login to AWS ECR
+        run: |
+          aws ecr get-login-password --region ap-south-1 | docker login --username AWS --password-stdin 886436948023.dkr.ecr.ap-south-1.amazonaws.com
+
+      - name: Tag Docker image
+        run: |
+          docker tag traffic-detection:latest 886436948023.dkr.ecr.ap-south-1.amazonaws.com/traffic-detection:latest
+
+      - name: Push Docker image to ECR
+        run: |
+          docker push 886436948023.dkr.ecr.ap-south-1.amazonaws.com/traffic-detection:latest
+
+  # Section 2: Continuous Delivery (CD)
+  cd:
+    runs-on: ubuntu-latest
+    needs: ci  # Ensure CI steps pass before deploying
+
+    steps:
+      # Step 1: Configure AWS CLI
       - name: Configure AWS CLI
         run: |
           aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws configure set region ap-south-1  # Replace with your region
 
-      # Step 4: Deploy to EC2
-      - name: Deploy to EC2 instance
+      # Step 2: Deploy Docker image to Staging Environment (e.g., EC2)
+      - name: Deploy to EC2 instance (Staging)
         run: |
-          # Connect to EC2 and perform deployment
           ssh -o StrictHostKeyChecking=no ubuntu@13.200.207.243 << EOF
-            # Login to AWS ECR
-            aws ecr get-login-password --region ap-south-1 | docker login --username ubuntu --password-stdin 886436948023.dkr.ecr.ap-south-1.amazonaws.com
-            
-            # Pull the Docker image from ECR
+            # Pull Docker image from ECR (Staging Environment)
             docker pull 886436948023.dkr.ecr.ap-south-1.amazonaws.com/traffic-detection:latest
 
-            # Run the Docker container on EC2
+            # Run Docker container on EC2 (Staging Environment)
             docker run -d -p 8080:8080 886436948023.dkr.ecr.ap-south-1.amazonaws.com/traffic-detection:latest
           EOF
 
-      # Optional: Check the running container logs (for debugging purposes)
-      - name: Check Docker container logs
+      # Step 3: Run tests on the Staging Environment (Optional)
+      - name: Run integration tests on Staging
+        run: |
+          # Add any integration tests that need to run on the deployed staging environment
+          curl http://13.200.207.243:8080  # Example: ping your service in staging
+
+  # Section 3: Continuous Deployment (CD)
+  cd-prod:
+    runs-on: ubuntu-latest
+    needs: cd  # Ensure CD steps pass before deploying to production
+
+    steps:
+      # Step 1: Configure AWS CLI
+      - name: Configure AWS CLI for Production
+        run: |
+          aws configure set aws_access_key_id ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws configure set aws_secret_access_key ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws configure set region ap-south-1  # Replace with your region
+
+      # Step 2: Deploy Docker image to Production Environment (EC2)
+      - name: Deploy to EC2 instance (Production)
         run: |
           ssh -o StrictHostKeyChecking=no ubuntu@13.200.207.243 << EOF
-            docker ps
-            # docker logs $(docker ps -q)
+            # Pull Docker image from ECR (Production)
+            docker pull 886436948023.dkr.ecr.ap-south-1.amazonaws.com/traffic-detection:latest
+
+            # Run Docker container on EC2 (Production)
+            docker run -d -p 8080:8080 886436948023.dkr.ecr.ap-south-1.amazonaws.com/traffic-detection:latest
+          EOF
+
+      # Step 3: Post-deployment monitoring (Optional)
+      - name: Monitor production logs
+        run: |
+          ssh -o StrictHostKeyChecking=no ubuntu@13.200.207.243 << EOF
+            docker logs $(docker ps -q)  # Check logs for any issues post-deployment
           EOF
