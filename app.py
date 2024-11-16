@@ -1,75 +1,86 @@
-import sys,os
-from wasteDetection.pipeline.training_pipeline import TrainPipeline
-from wasteDetection.utils.main_utils import decodeImage, encodeImageIntoBase64
-from flask import Flask, request, jsonify, render_template,Response
-from flask_cors import CORS, cross_origin
-from wasteDetection.constant.application import APP_HOST, APP_PORT
-
+from flask import Flask, render_template, request, url_for
+import torch
+from PIL import Image
+import os
+import cv2
 
 app = Flask(__name__)
-CORS(app)
 
-class ClientApp:
-    def __init__(self):
-        self.filename = "inputImage.jpg"
+# Load your vehicle detection model
+model = torch.hub.load('ultralytics/yolov5', 'custom', path=r'models/best.pt')  # Update with your custom model path
+UPLOAD_FOLDER = 'static/uploads'
+PROCESSED_FOLDER = 'static/processed'
 
+# Ensure folders exist
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(PROCESSED_FOLDER, exist_ok=True)
 
+@app.route('/')
+def index():
+    return render_template('index.html')
 
-@app.route("/train")
-def trainRoute():
-    obj = TrainPipeline()
-    obj.run_pipeline()
-    return "Training Successfull!!" 
+@app.route('/detect', methods=['POST'])
+def detect():
+    if 'file' not in request.files:
+        return "No file uploaded", 400
 
+    file = request.files['file']
+    if file.filename == '':
+        return "No selected file", 400
 
-@app.route("/")
-def home():
-    return render_template("index.html")
+    # Save uploaded file
+    file_path = os.path.join(UPLOAD_FOLDER, file.filename)
+    file.save(file_path)
 
+    # Process based on file type
+    if file.filename.lower().endswith(('.png', '.jpg', '.jpeg')):
+        # Process Image
+        processed_file_path = process_image(file_path)
+        file_type = 'image'
+    elif file.filename.lower().endswith(('.mp4', '.avi')):
+        # Process Video
+        processed_file_path = process_video(file_path)
+        file_type = 'video'
+    else:
+        return "Unsupported file format", 400
 
+    # Get the URL for the processed file
+    processed_url = url_for('static', filename='processed/' + os.path.basename(processed_file_path))
+    upload_url = url_for('static', filename='uploads/' + os.path.basename(file_path))
+    return render_template('index.html', uploaded_file=upload_url, processed_file=processed_url, file_type=file_type)
 
-@app.route("/predict", methods=['POST','GET'])
-@cross_origin()
-def predictRoute():
-    try:
-        image = request.json['image']
-        decodeImage(image, clApp.filename)
+def process_image(file_path):
+    # Load and detect vehicles in the image
+    image = Image.open(file_path)
+    results = model(image)  # Run detection
 
-        os.system("cd yolov5/ && python detect.py --weights my_model.pt --img 416 --conf 0.5 --source ../data/inputImage.jpg")
+    # Render and save processed image
+    processed_image_path = os.path.join(PROCESSED_FOLDER, 'processed_' + os.path.basename(file_path))
+    rendered_image = results.render()[0]
+    Image.fromarray(rendered_image).save(processed_image_path)
+    return processed_image_path
 
-        opencodedbase64 = encodeImageIntoBase64("yolov5/runs/detect/exp/inputImage.jpg")
-        result = {"image": opencodedbase64.decode('utf-8')}
-        os.system("rm -rf yolov5/runs")
+def process_video(file_path):
+    # Open and process video
+    cap = cv2.VideoCapture(file_path)
+    output_file = os.path.join(PROCESSED_FOLDER, 'processed_' + os.path.basename(file_path))
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(output_file, fourcc, cap.get(cv2.CAP_PROP_FPS), 
+                          (int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)), int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))))
 
-    except ValueError as val:
-        print(val)
-        return Response("Value not found inside  json data")
-    except KeyError:
-        return Response("Key value error incorrect key passed")
-    except Exception as e:
-        print(e)
-        result = "Invalid input"
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
 
-    return jsonify(result)
+        # Run detection on each frame
+        results = model(frame)
+        processed_frame = results.render()[0]  # Get processed frame
+        out.write(processed_frame)  # Write to output video
 
+    cap.release()
+    out.release()
+    return output_file
 
-
-@app.route("/live", methods=['GET'])
-@cross_origin()
-def predictLive():
-    try:
-        os.system("cd yolov5/ && python detect.py --weights my_model.pt --img 416 --conf 0.5 --source 0")
-        os.system("rm -rf yolov5/runs")
-        return "Camera starting!!" 
-
-    except ValueError as val:
-        print(val)
-        return Response("Value not found inside  json data")
-    
-
-
-
-if __name__ == "__main__":
-    clApp = ClientApp()
-    app.run(host=APP_HOST, port=APP_PORT)
-
+if __name__ == '__main__':
+    app.run(debug=True)
