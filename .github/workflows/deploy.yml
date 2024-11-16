@@ -111,5 +111,4 @@ jobs:
         run: |
           ssh -o StrictHostKeyChecking=no ubuntu@13.200.207.243 << EOF
             docker ps
-            docker logs $(docker ps -q)
           EOF
